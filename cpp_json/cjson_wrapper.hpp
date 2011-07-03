@@ -17,11 +17,13 @@
 #pragma once
 #include <cJSON.h>
 #include "detail/safe_bool.hpp"
-#include <tr1/memory>
+#include <boost/shared_ptr.hpp>
 #include <boost/iterator_adaptors.hpp>
 #include <boost/optional.hpp>
 #include <stdexcept>
 #include <string>
+#include <boost/type_traits/is_convertible.hpp>
+#include <boost/utility/enable_if.hpp>
 
 namespace cpp_json {
 
@@ -86,33 +88,31 @@ namespace cpp_json {
         }
     };
 
+    template <typename ValueType, typename BaseType>
+    class cjson_iterator;
+
     class cjson_wrapper
     : public detail::safe_bool<cjson_wrapper>
     {
-        cJSON *json_;
-
     public:
-        struct iterator
-        : boost::iterator_adaptor<
-                    iterator,
-                    cJSON*,                         // base type
-                    cjson_wrapper,                  // value type
-                    boost::forward_traversal_tag    // iterator traits
-        >
-        {
-            iterator( cJSON* p )
-            : boost::iterator_adaptor<iterator,cJSON*,cjson_wrapper,boost::forward_traversal_tag>( p ) {}
-            void increment()         { base_reference() = base()->next; }
-            cjson_wrapper dereference() const { return cjson_wrapper(base_reference()); }
-        };
-
-        iterator begin(){ return iterator(json_->child); }
-        iterator end()  { return iterator(NULL); }
+        typedef cjson_iterator<cjson_wrapper, cJSON> iterator;
+        typedef cjson_iterator<cjson_wrapper const, cJSON> const_iterator;
+        iterator begin();
+        iterator end();
+        const_iterator begin() const;
+        const_iterator end() const;
+        const_iterator cbegin() const;
+        const_iterator cend() const;
 
     public:
         explicit cjson_wrapper(cJSON *json)
         :   json_(json)
         {
+        }
+
+        cjson_wrapper next() const
+        {
+            return cjson_wrapper(json_->next);
         }
 
         template <typename RetType>
@@ -158,32 +158,138 @@ namespace cpp_json {
             return cjson_wrapper(cJSON_GetObjectItem(json_, key));
         }
 
+        cJSON *raw_pointer()
+        {
+            return json_;
+        }
+
+        const cJSON *raw_pointer() const
+        {
+            return json_;
+        }
+
     public:
         // Implementation for safe_bool CRTP
         bool boolean_test() const
         {
             return json_ != 0 && json_->type != cJSON_NULL && json_->type != cJSON_False;
         }
+
+    private:
+        cJSON *json_;
     };
+
+    template <typename ValueType, typename BaseType>
+    class cjson_iterator
+    : public boost::iterator_facade<
+                cjson_iterator<ValueType, BaseType>,
+                ValueType,                      // value type
+                boost::forward_traversal_tag,   // iterator traits
+                ValueType                       // Reference
+    >
+    {
+    private:
+        struct enabler {};
+
+    public:
+        cjson_iterator()
+        : node_()
+        , boost::iterator_facade<cjson_iterator<ValueType, BaseType>,
+                                 ValueType,
+                                 boost::forward_traversal_tag,
+                                 ValueType>()
+        {
+        }
+
+        explicit cjson_iterator(BaseType *p)
+        : node_(p)
+        , boost::iterator_facade<cjson_iterator<ValueType, BaseType>,
+                                 ValueType,
+                                 boost::forward_traversal_tag,
+                                 ValueType>()
+        {
+        }
+
+        BaseType *_internal_pointer() { return node_; }
+        BaseType const *_internal_pointer() const { return node_; }
+
+        template <typename OtherValue, typename OtherBase>
+        cjson_iterator(cjson_iterator<OtherValue, OtherBase> const& other,
+                       typename boost::enable_if<boost::is_convertible<OtherBase*,BaseType*>,enabler>::type = enabler())
+        : node_(other._internal_pointer())
+        , boost::iterator_facade<cjson_iterator<ValueType, BaseType>,
+                                 ValueType,
+                                 boost::forward_traversal_tag,
+                                 ValueType>()
+        {
+        }
+
+    private:
+        friend class boost::iterator_core_access;
+
+        template <typename OtherValue, typename OtherBase>
+        bool equal(cjson_iterator<OtherValue, OtherBase> const& other) const
+        {
+            return this->node_ == other._internal_pointer();
+        }
+
+        void increment()
+        {
+            node_ = node_->next;
+        }
+
+        ValueType dereference() const
+        {
+            return cjson_wrapper(node_);
+        }
+
+    private:
+        BaseType *node_;
+    };
+
+    cjson_wrapper::iterator cjson_wrapper::begin()
+    {
+        return iterator(json_->child);
+    }
+
+    cjson_wrapper::iterator cjson_wrapper::end()
+    {
+        return iterator(NULL);
+    }
+
+    cjson_wrapper::const_iterator cjson_wrapper::cbegin() const
+    {
+        return const_iterator(json_->child);
+    }
+
+    cjson_wrapper::const_iterator cjson_wrapper::cend() const
+    {
+        return const_iterator(NULL);
+    }
+
+    cjson_wrapper::const_iterator cjson_wrapper::begin() const
+    {
+        return cbegin();
+    }
+
+    cjson_wrapper::const_iterator cjson_wrapper::end() const
+    {
+        return cend();
+    }
 
     class cjson_document : public cjson_wrapper
     {
-        std::tr1::shared_ptr<cJSON> json_;
+        boost::shared_ptr<cJSON> json_;
     public:
         explicit cjson_document(cJSON *json)
         :   json_(json, cJSON_Delete)
         ,   cjson_wrapper(json)
         {
         }
-
-        static cjson_document parse(const char *str)
-        {
-            return cjson_document(cJSON_Parse(str));
-        }
-
-        static cjson_document parse(NSString *str)
-        {
-            return cjson_document(cJSON_Parse([str UTF8String]));
-        }
     };
+
+    cjson_document parse(const char *str)
+    {
+        return cjson_document(cJSON_Parse(str));
+    }
 } // namespace cpp_json

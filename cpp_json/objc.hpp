@@ -36,4 +36,8 @@ namespace cpp_json {
         }
     };
 
+    cjson_document parse(NSString *str)
+    {
+        return cjson_document(cJSON_Parse([str UTF8String]));
+    }
 } // namespace cpp_json
