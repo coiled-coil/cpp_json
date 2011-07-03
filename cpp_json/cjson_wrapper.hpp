@@ -247,31 +247,37 @@ namespace cpp_json {
         BaseType *node_;
     };
 
+    inline
     cjson_wrapper::iterator cjson_wrapper::begin()
     {
         return iterator(json_->child);
     }
 
+    inline
     cjson_wrapper::iterator cjson_wrapper::end()
     {
         return iterator(NULL);
     }
 
+    inline
     cjson_wrapper::const_iterator cjson_wrapper::cbegin() const
     {
         return const_iterator(json_->child);
     }
 
+    inline
     cjson_wrapper::const_iterator cjson_wrapper::cend() const
     {
         return const_iterator(NULL);
     }
 
+    inline
     cjson_wrapper::const_iterator cjson_wrapper::begin() const
     {
         return cbegin();
     }
 
+    inline
     cjson_wrapper::const_iterator cjson_wrapper::end() const
     {
         return cend();
@@ -288,6 +294,7 @@ namespace cpp_json {
         }
     };
 
+    inline
     cjson_document parse(const char *str)
     {
         return cjson_document(cJSON_Parse(str));
